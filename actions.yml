@@ -1,41 +1,194 @@
-name: 'Check Base Branch Action'
-description: 'Checks the base branch of a PR and ensures the PR is up-to-date with its base branch.'
-inputs:
-  token:
-    description: 'GitHub token'
-    required: true
-  intended-base:
-    description: 'Intended base branch'
-    required: true
-runs:
-  using: 'composite'
-  steps:
-    - name: Ensure PR base branch is the intended one
-      run: |
-        INTENDED_BASE=${{ inputs.intended-base }}
-        BASE_REF=${{ github.event.pull_request.base.ref }}
-        if [ "$BASE_REF" != "$INTENDED_BASE" ]; then
-          echo "Error: PR base branch is not the intended branch."
-          exit 1
-        fi
-      shell: bash
+name: Combined Workflow
 
-    - name: Check if PR is up-to-date with its base branch
-      run: |
-        PR_NUMBER=${{ github.event.pull_request.number }}
+on:
+  pull_request:
+    types: [opened, synchronize, edited, reopened]
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
 
-        # GitHub APIを使用してPRの詳細を取得
-        PR_INFO=$(gh pr view $PR_NUMBER --json base,head -R ${{ github.repository }})
+jobs:
 
-        # PRのheadとbaseのSHAを取得
-        HEAD_SHA=$(echo $PR_INFO | jq -r .head.sha)
-        BASE_SHA=$(echo $PR_INFO | jq -r .base.sha)
+  assign_pr_to_creator:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto Assign PR to Creator
+        uses: actions/github-script@v5
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            console.log('Assigning PR...');
+            console.log('Context:', JSON.stringify(context, null, 2));
+            github.rest.issues.addAssignees({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              assignees: [context.payload.pull_request.user.login]
+            })
+            console.log('PR assigned to creator.');
 
-        # ベースブランチの最新のSHAを取得
-        LATEST_BASE_SHA=$(git rev-parse origin/${{ github.event.pull_request.base.ref }})
+  auto-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add label based on branch name
+        uses: actions/github-script@v5
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const branchName = context.payload.pull_request.head.ref;
+            console.log(`Branch name: ${branchName}`);
+            console.log('Adding label based on branch name...');
+            if (branchName.startsWith('feature/')) {
+              github.rest.issues.addLabels({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['feature']
+              });
+              console.log('Feature label added.');
+            } else if (branchName.startsWith('bugfix/')) {
+              github.rest.issues.addLabels({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['bugfix']
+              });
+              console.log('Bugfix label added.');
+            } else if (branchName.startsWith('release/')) {
+              github.rest.issues.addLabels({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['release']
+              });
+              console.log('Release label added.');
+            } else if (branchName.startsWith('hotfix/')) {
+              github.rest.issues.addLabels({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['hotfix']
+              });
+              console.log('Hotfix label added.');
+            } else if (branchName.startsWith('support/')) {
+              github.rest.issues.addLabels({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['support']
+              });
+              console.log('Support label added.');
+            } else {
+              console.log('No matching prefix found for label addition.');
+            }
 
-        if [ "$BASE_SHA" != "$LATEST_BASE_SHA" ]; then
-          echo "PR is not up-to-date with its base branch. Please update your branch."
-          exit 1
-        fi
-      shell: bash
+  pull_request_taking_for_jira:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Axios
+        run: npm install axios
+      - name: Fetch JIRA Task Name and Modify PR Title
+        uses: actions/github-script@v5
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const axios = require('axios');
+            console.log('Starting Fetch JIRA Task Name and Modify PR Title...');
+            console.log('Payload:', JSON.stringify(context.payload, null, 2));
+            const branchName = context.payload.pull_request.head.ref;
+            const currentDescription = context.payload.pull_request.body;
+            const branchSuffix = branchName.split('/')[1] || '';
+            const jiraIDMatch = branchName.match(/[A-Z]+-[0-9]+/);
+            let jiraTaskName = '';
+            let replacements = {
+              "$JIRA_SBI": branchSuffix
+            };
+            if (jiraIDMatch) {
+              const jiraID = jiraIDMatch[0];
+              console.log(`JIRA ID found: ${jiraID}`);
+              try {
+                const jiraAPIResponse = await axios.get(`${process.env.JIRA_BASE_URL}/rest/api/2/issue/${jiraID}`, {
+                  headers: {
+                    'Authorization': `Basic ${Buffer.from(`${process.env.JIRA_EMAIL}:${process.env.JIRA_API_TOKEN}`).toString('base64')}`,
+                    'Content-Type': 'application/json',
+                  },
+                });
+                if (jiraAPIResponse.status === 200 && jiraAPIResponse.data && jiraAPIResponse.data.fields) {
+                  jiraTaskName = jiraAPIResponse.data.fields.summary;
+                  console.log('JIRA Task Name:', jiraTaskName);
+                  if (jiraAPIResponse.data.fields.parent) {
+                    replacements["$JIRA_PBI"] = jiraAPIResponse.data.fields.parent.key;
+                  }
+                  if (jiraAPIResponse.data.fields.components && jiraAPIResponse.data.fields.components.length > 0) {
+                    const componentNames = jiraAPIResponse.data.fields.components.map(comp => comp.name);
+                    for (const componentName of componentNames) {
+                      github.rest.issues.addLabels({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: context.payload.pull_request.number,
+                        labels: [componentName]
+                      });
+                    }
+                    console.log('Component labels added:', componentNames);
+                  }
+                } else {
+                  console.log('Unable to fetch JIRA task name.', jiraAPIResponse.data);
+                }
+              } catch (error) {
+                console.log('Error fetching JIRA data:', error.message);
+              }
+            } else {
+              console.log('No JIRA ID found in branch name.');
+            }
+            const newDescription = currentDescription.replace(/\$JIRA_SBI/g, replacements["$JIRA_SBI"]).replace(/\$JIRA_PBI/g, replacements["$JIRA_PBI"]);
+            github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              body: newDescription
+            });
+            console.log('PR title and description updated.');
+        env:
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+
+
+  check-base-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Ensure PR base branch is the intended one
+        run: |
+          # ここで期待するベースブランチを設定します。
+          # 例: INTENDED_BASE="feature/some-feature"
+          # 状況に応じて動的に変更することも可能です。
+          INTENDED_BASE=${{ github.event.pull_request.base.ref }}  # これは現在のベースブランチです。これを期待するブランチ名やロジックで置き換えることができます。
+
+          BASE_REF=${{ github.event.pull_request.base.ref }}
+          if [ "$BASE_REF" != "$INTENDED_BASE" ]; then
+            echo "Error: PR base branch is not the intended branch."
+            exit 1
+          fi
+
+      - name: Check if PR is up-to-date with its base branch
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+
+          # GitHub APIを使用してPRの詳細を取得
+          PR_INFO=$(gh pr view $PR_NUMBER --json base,head -R ${{ github.repository }})
+
+          # PRのheadとbaseのSHAを取得
+          HEAD_SHA=$(echo $PR_INFO | jq -r .head.sha)
+          BASE_SHA=$(echo $PR_INFO | jq -r .base.sha)
+
+          # ベースブランチの最新のSHAを取得
+          LATEST_BASE_SHA=$(git rev-parse origin/${{ github.event.pull_request.base.ref }})
+
+          if [ "$BASE_SHA" != "$LATEST_BASE_SHA" ]; then
+            echo "PR is not up-to-date with its base branch. Please update your branch."
+            exit 1
+          fi
