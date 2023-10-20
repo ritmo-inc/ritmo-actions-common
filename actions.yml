@@ -1,0 +1,41 @@
+name: 'Check Base Branch Action'
+description: 'Checks the base branch of a PR and ensures the PR is up-to-date with its base branch.'
+inputs:
+  token:
+    description: 'GitHub token'
+    required: true
+  intended-base:
+    description: 'Intended base branch'
+    required: true
+runs:
+  using: 'composite'
+  steps:
+    - name: Ensure PR base branch is the intended one
+      run: |
+        INTENDED_BASE=${{ inputs.intended-base }}
+        BASE_REF=${{ github.event.pull_request.base.ref }}
+        if [ "$BASE_REF" != "$INTENDED_BASE" ]; then
+          echo "Error: PR base branch is not the intended branch."
+          exit 1
+        fi
+      shell: bash
+
+    - name: Check if PR is up-to-date with its base branch
+      run: |
+        PR_NUMBER=${{ github.event.pull_request.number }}
+
+        # GitHub APIを使用してPRの詳細を取得
+        PR_INFO=$(gh pr view $PR_NUMBER --json base,head -R ${{ github.repository }})
+
+        # PRのheadとbaseのSHAを取得
+        HEAD_SHA=$(echo $PR_INFO | jq -r .head.sha)
+        BASE_SHA=$(echo $PR_INFO | jq -r .base.sha)
+
+        # ベースブランチの最新のSHAを取得
+        LATEST_BASE_SHA=$(git rev-parse origin/${{ github.event.pull_request.base.ref }})
+
+        if [ "$BASE_SHA" != "$LATEST_BASE_SHA" ]; then
+          echo "PR is not up-to-date with its base branch. Please update your branch."
+          exit 1
+        fi
+      shell: bash
