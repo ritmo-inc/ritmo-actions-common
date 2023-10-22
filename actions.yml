@@ -23,4 +23,4 @@ runs:
 
 branding:
   icon: 'check-square'
-  color: 'green'  # こちらの色はお好みに合わせて変更できます
+  color: 'green' 
