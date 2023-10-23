@@ -1,7 +1,12 @@
 const core = require('@actions/core');
 const github = require('@actions/github');
+<<<<<<< Updated upstream
 const axios = require('axios');
 const { execSync } = require('child_process');
+=======
+const { execSync } = require('child_process');
+
+>>>>>>> Stashed changes
 
 class PRHandler {
     constructor(inputs) {

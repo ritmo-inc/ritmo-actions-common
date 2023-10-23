@@ -1,0 +1,16 @@
+{
+  "name": "ritmo-actions-common",
+  "version": "1.0.0",
+  "description": "このActionは、GitHubのPull Requestに関連するJIRAのタスク情報を自動的に取得し、PRの説明に情報を追加する機能を提供します。さらに、ベースブランチが期待するものであるか、およびPRがベースブランチと同期しているかどうかを確認する機能も備えています。",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "KosukeIsogai",
+  "license": "MIT",
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "@actions/github": "^6.0.0",
+    "axios": "^1.5.1"
+  }
+}
