@@ -39,12 +39,14 @@ class PRProcessor {
         
         const headSha = prInfo.head.sha;
         const baseSha = prInfo.base.sha;
+        const baseRef = this.context.payload.pull_request.base.ref;  // Get the baseRef directly from the context
         const latestBaseSha = execSync(`git rev-parse origin/${baseRef}`, { encoding: 'utf8' }).trim();
         
         if (baseSha !== latestBaseSha) {
             throw new Error("PR is not up-to-date with its base branch. Please update your branch.");
         }
     }
+
 
     // PRの内容をJiraの情報を元に更新する関数
     async updatePrFromJira() {
