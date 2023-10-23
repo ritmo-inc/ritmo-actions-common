@@ -18,8 +18,10 @@ inputs:
     required: true
 
 runs:
-  using: 'node12'
-  main: 'setup.sh'
+  using: 'composite'
+  steps:
+    - run: ./setup.sh
+      shell: bash
 
 branding:
   icon: 'check-square'
