@@ -1,0 +1,26 @@
+name: 'JIRA and GitHub PR Checker'
+description: 'Check PR base branch, update PR description with JIRA details, and add labels from JIRA components'
+author: 'ritmo-inc'  # こちらを適切な名前や組織名に置き換えてください
+
+
+inputs:
+  github-token:
+    description: 'GitHub Token'
+    required: true
+  jira-base-url:
+    description: 'JIRA Base URL (e.g., https://your-jira-instance.atlassian.net)'
+    required: true
+  jira-email:
+    description: 'Email associated with the JIRA API token'
+    required: true
+  jira-api-token:
+    description: 'JIRA API Token'
+    required: true
+
+runs:
+  using: 'node20'
+  main: 'index.js'
+
+branding:
+  icon: 'check-square'
+  color: 'green'  # こちらの色はお好みに合わせて変更できます
